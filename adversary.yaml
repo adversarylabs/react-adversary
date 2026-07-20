@@ -1,5 +1,5 @@
 name: react
-version: 0.0.0
+version: 0.0.1
 description: Reviews React source for raw HTML injection, opener attacks, and dynamic code execution.
 
 triggers:
