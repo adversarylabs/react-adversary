@@ -16,3 +16,7 @@ npm test
 adversary validate .
 adversary pack --check .
 ```
+
+## Automatic detection
+
+`adversary auto` selects the react adversary when changes include `**/*.jsx` or `**/*.tsx`, plus the other domain-specific patterns declared in `adversary.yaml`. Unrelated changes do not select it.

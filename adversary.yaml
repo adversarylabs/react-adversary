@@ -10,6 +10,11 @@ triggers:
     - "**/*.js"
     - "**/*.ts"
 
+detection:
+  files:
+    - "**/*.jsx"
+    - "**/*.tsx"
+
 runtime:
   name: node
   version: "22"
