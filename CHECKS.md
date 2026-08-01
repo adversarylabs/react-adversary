@@ -1,10 +1,10 @@
 # Checks — what react detects
 
-This file is the **public audit list** of detectors for the **react** adversary. High-confidence React security defects with file:line evidence in JSX/TSX. This adversary does **not** duplicate eslint-plugin-react/react-hooks defaults (keys, deps arrays, hook rules) — teams already run those; we only ship what a staff security review adds on top.
+This file is the **public audit list** of detectors for the **web/react** adversary. High-confidence React security defects with file:line evidence in JSX/TSX. This adversary does **not** duplicate eslint-plugin-react/react-hooks defaults (keys, deps arrays, hook rules) — teams already run those; we only ship what a staff security review adds on top.
 
 Runtime source of truth: [`src/spec.ts`](src/spec.ts) / [`src/rules.ts`](src/rules.ts).
 
-**Scope:** `*.jsx`, `*.tsx`, and `*.js`/`*.ts` files importing React. Framework-specific config (Next.js) is owned by `nextjs`.
+**Scope:** `*.jsx`, `*.tsx`, and `*.js`/`*.ts` files importing React. Framework-specific config (Next.js) is owned by `web/nextjs`.
 
 **Precision stance:** XSS sinks fire on non-literal input only. Claims must match current browser/React behavior — no findings based on threats browsers have since mitigated (see `reverse-tabnabbing`, kept at low with honest framing).
 

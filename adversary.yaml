@@ -1,5 +1,5 @@
-name: lang/react
-version: 0.0.4
+name: web/react
+version: 0.0.5
 description: Reviews React source for raw HTML injection, opener attacks, and dynamic code execution.
 
 triggers:
