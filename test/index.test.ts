@@ -5,7 +5,14 @@ import { createApp } from "../src/index.ts";
 
 const fixture = (name: string) => new URL(`../fixtures/${name}`, import.meta.url).pathname;
 const review = (name: string, raw = false) => createApp().run({ input: { source: { path: fixture(name) } }, includeRawObservations: raw });
-const ruleCases = [{"key":"unsafe-html","id":"react.unsafe-html"},{"key":"reverse-tabnabbing","id":"react.reverse-tabnabbing"},{"key":"dynamic-eval","id":"react.dynamic-eval"}];
+const ruleCases = [
+  { key: "unsafe-html", id: "react.unsafe-html" },
+  { key: "dynamic-eval", id: "react.dynamic-eval" },
+  { key: "client-env-secret", id: "react.client-env-secret" },
+  { key: "href-user-input", id: "react.href-user-input" },
+  { key: "token-in-localstorage", id: "react.token-in-localstorage" },
+  { key: "reverse-tabnabbing", id: "react.reverse-tabnabbing" },
+];
 
 test("every initial rule has focused vulnerable and clean coverage", async () => {
   for (const rule of ruleCases) {
@@ -30,5 +37,5 @@ test("output ordering and protocol envelope are deterministic", async () => {
   assert.deepEqual(second, first);
   const envelope = JSON.parse(JSON.stringify(createAdversaryRunEnvelope(first)));
   assert.equal(envelope.protocolVersion, 1);
-  assert.equal(envelope.result.adversary.name, "react");
+  assert.equal(envelope.result.adversary.name, "lang/react");
 });

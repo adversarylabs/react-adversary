@@ -1,13 +1,10 @@
+const SOURCE_FILES = ["**/*.jsx", "**/*.tsx", "**/*.js", "**/*.ts"];
+const JSX_FILES = ["**/*.jsx", "**/*.tsx"];
 export const spec = {
     "id": "react",
     "displayName": "React",
     "description": "Reviews React source for raw HTML injection, opener attacks, and dynamic code execution.",
-    "files": [
-        "**/*.jsx",
-        "**/*.tsx",
-        "**/*.js",
-        "**/*.ts"
-    ],
+    "files": [...SOURCE_FILES],
     "rules": [
         {
             "id": "react.unsafe-html",
@@ -16,52 +13,16 @@ export const spec = {
             "category": "security",
             "severity": "high",
             "confidence": "high",
-            "whyItMatters": "React renders raw HTML weakens an important security boundary.",
-            "impact": "The repository may behave insecurely, unreliably, or differently from the reviewed configuration.",
-            "recommendation": "Render text normally or sanitize with a maintained allowlist sanitizer.",
+            "whyItMatters": "dangerouslySetInnerHTML and innerHTML writes with non-literal input are direct XSS sinks.",
+            "impact": "Attacker-controlled markup executes in the user session.",
+            "recommendation": "Render text normally; when HTML is required, sanitize with a maintained allowlist sanitizer at the sink.",
             "complexity": "small",
-            "tags": [
-                "security",
-                "unsafe-html"
-            ],
+            "tags": ["security", "unsafe-html", "xss"],
             "match": {
                 "kind": "content",
-                "files": [
-                    "**/*.jsx",
-                    "**/*.tsx",
-                    "**/*.js",
-                    "**/*.ts"
-                ],
+                "files": [...SOURCE_FILES],
                 "pattern": {
-                    "pattern": "dangerouslySetInnerHTML\\s*=\\s*\\{\\{",
-                    "flags": "i"
-                },
-                "requires": []
-            }
-        },
-        {
-            "id": "react.reverse-tabnabbing",
-            "title": "Blank-target link lacks opener isolation",
-            "summary": "Blank-target link lacks opener isolation",
-            "category": "security",
-            "severity": "medium",
-            "confidence": "high",
-            "whyItMatters": "Blank-target link lacks opener isolation weakens an important security boundary.",
-            "impact": "The repository may behave insecurely, unreliably, or differently from the reviewed configuration.",
-            "recommendation": "Add rel=\"noopener noreferrer\".",
-            "complexity": "small",
-            "tags": [
-                "security",
-                "reverse-tabnabbing"
-            ],
-            "match": {
-                "kind": "content",
-                "files": [
-                    "**/*.jsx",
-                    "**/*.tsx"
-                ],
-                "pattern": {
-                    "pattern": "target=[\"']_blank[\"'](?![^>]*rel=[\"'][^\"']*(?:noopener|noreferrer))",
+                    "pattern": "(?:dangerouslySetInnerHTML\\s*=\\s*\\{\\{|\\.innerHTML\\s*=|insertAdjacentHTML\\s*\\()",
                     "flags": "i"
                 },
                 "requires": []
@@ -74,24 +35,104 @@ export const spec = {
             "category": "security",
             "severity": "high",
             "confidence": "high",
-            "whyItMatters": "React client executes dynamic JavaScript weakens an important security boundary.",
-            "impact": "The repository may behave insecurely, unreliably, or differently from the reviewed configuration.",
-            "recommendation": "Replace dynamic evaluation with explicit parsing.",
+            "whyItMatters": "eval/new Function/string-form timers on dynamic data is XSS with extra steps and breaks CSP.",
+            "impact": "Remote code execution in the browser when any user-influenced string reaches the sink.",
+            "recommendation": "Replace dynamic evaluation with explicit parsing (JSON.parse, lookup tables).",
             "complexity": "small",
-            "tags": [
-                "security",
-                "dynamic-eval"
-            ],
+            "tags": ["security", "dynamic-eval"],
             "match": {
                 "kind": "content",
-                "files": [
-                    "**/*.jsx",
-                    "**/*.tsx",
-                    "**/*.js",
-                    "**/*.ts"
-                ],
+                "files": [...SOURCE_FILES],
                 "pattern": {
-                    "pattern": "\\b(?:eval|new\\s+Function)\\s*\\(",
+                    "pattern": "\\b(?:eval|new\\s+Function)\\s*\\(|(?:setTimeout|setInterval)\\s*\\(\\s*[\"'`]",
+                    "flags": "i"
+                },
+                "requires": []
+            }
+        },
+        {
+            "id": "react.client-env-secret",
+            "title": "Secret-shaped value referenced via client-exposed env",
+            "summary": "Secret-shaped value referenced via client-exposed env",
+            "category": "secrets",
+            "severity": "high",
+            "confidence": "high",
+            "whyItMatters": "REACT_APP_*/VITE_*/PUBLIC_* vars are compiled into the public bundle.",
+            "impact": "API secrets and private tokens are published to every visitor.",
+            "recommendation": "Move privileged calls server-side; browser code gets only publishable keys.",
+            "complexity": "small",
+            "tags": ["secrets", "client-env"],
+            "match": {
+                "kind": "content",
+                "files": [...SOURCE_FILES],
+                "pattern": {
+                    "pattern": "(?:process\\.env\\.(?:REACT_APP|NEXT_PUBLIC|PUBLIC)_(?:[A-Z0-9_]*?(?:SECRET|TOKEN|PRIVATE|PASSWORD|API_KEY|SERVICE_ROLE)[A-Z0-9_]*)|import\\.meta\\.env\\.VITE_(?:[A-Z0-9_]*?(?:SECRET|TOKEN|PRIVATE|PASSWORD|API_KEY)[A-Z0-9_]*))",
+                    "flags": "i"
+                },
+                "requires": []
+            }
+        },
+        {
+            "id": "react.href-user-input",
+            "title": "User-influenced value used in navigation attribute",
+            "summary": "User-influenced value used in navigation attribute",
+            "category": "security",
+            "severity": "medium",
+            "confidence": "medium",
+            "whyItMatters": "javascript: URLs and open redirects via user-controlled href/src remain DOM-XSS sinks.",
+            "impact": "Click-driven script execution or phishing redirects from rendered links.",
+            "recommendation": "Allowlist protocols (http:, https:, relative) before rendering user-supplied URLs.",
+            "complexity": "small",
+            "tags": ["security", "href", "xss"],
+            "match": {
+                "kind": "content",
+                "files": [...JSX_FILES],
+                "pattern": {
+                    "pattern": "(?:href|to|src)=\\{(?:props\\.|[\\w.]*?(?:query|searchParams|params|userInput|userUrl|urlFromUser)[\\w.]*|location\\.search)",
+                    "flags": "i"
+                },
+                "requires": []
+            }
+        },
+        {
+            "id": "react.token-in-localstorage",
+            "title": "Auth token stored in web storage",
+            "summary": "Auth token stored in web storage",
+            "category": "security",
+            "severity": "medium",
+            "confidence": "medium",
+            "whyItMatters": "Any XSS or compromised dependency can exfiltrate localStorage/sessionStorage tokens.",
+            "impact": "Session theft without needing HttpOnly cookie access.",
+            "recommendation": "Prefer HttpOnly SameSite cookies for session credentials; keep tokens short-lived if storage is unavoidable.",
+            "complexity": "medium",
+            "tags": ["security", "storage", "token"],
+            "match": {
+                "kind": "content",
+                "files": [...SOURCE_FILES],
+                "pattern": {
+                    "pattern": "(?:localStorage|sessionStorage)\\.setItem\\s*\\(\\s*[\"'][^\"']*(?:token|jwt|access_token|refresh_token|id_token|auth)[^\"']*[\"']",
+                    "flags": "i"
+                },
+                "requires": []
+            }
+        },
+        {
+            "id": "react.reverse-tabnabbing",
+            "title": "Blank-target link lacks opener isolation",
+            "summary": "Blank-target link lacks opener isolation",
+            "category": "security",
+            "severity": "low",
+            "confidence": "high",
+            "whyItMatters": "Modern browsers imply noopener for target=_blank; residual value is legacy browsers and referrer control.",
+            "impact": "Low residual risk of opener abuse on older or embedded browsers.",
+            "recommendation": "Add rel=\"noopener noreferrer\".",
+            "complexity": "trivial",
+            "tags": ["security", "reverse-tabnabbing"],
+            "match": {
+                "kind": "content",
+                "files": [...JSX_FILES],
+                "pattern": {
+                    "pattern": "target=[\"']_blank[\"'](?![^>]*rel=[\"'][^\"']*(?:noopener|noreferrer))",
                     "flags": "i"
                 },
                 "requires": []
