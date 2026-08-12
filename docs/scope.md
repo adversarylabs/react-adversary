@@ -15,6 +15,7 @@ Review React for raw HTML injection, opener attacks, and dynamic code execution.
 - dangerouslySetInnerHTML / XSS vectors
 - window.opener attacks
 - Dynamic code execution in React code
+- Dynamic anchor URLs guarded only by click-handler validation
 
 ## Out of scope (not a miss for this adversary)
 

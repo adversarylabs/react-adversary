@@ -1,5 +1,6 @@
 import { readdir } from "node:fs/promises";
 import { join, sep } from "node:path";
+import ts from "typescript";
 import { observationFor } from "./rules.js";
 import { spec } from "./spec.js";
 const SKIPPED = new Set([".adversary", ".git", ".hg", ".next", ".svn", "coverage", "dist", "node_modules", "target", "vendor"]);
@@ -36,6 +37,8 @@ function evaluate(rule, sources, allPaths) {
         return [{ rule, file: triggers[0] ?? ".", line: 1, snippet: triggers[0] ?? "", label: rule.title, data: { triggerFiles: triggers.slice(0, 10), requiredFiles: match.requiredFiles } }];
     }
     const matchingSources = sources.filter((file) => match.files.some((glob) => matchesGlob(file.path, glob)));
+    if (match.kind === "raw-href-handler-guard")
+        return matchingSources.flatMap((file) => findRawHrefHandlerGuards(rule, file));
     if (match.kind === "missing-content") {
         return matchingSources.flatMap((file) => {
             if (!test(file.source, match.trigger) || test(file.source, match.required))
@@ -55,6 +58,131 @@ function evaluate(rule, sources, allPaths) {
         return [{ rule, file: file.path, ...location, label: rule.title, data: { matchedPattern: match.pattern.pattern } }];
     });
 }
+function findRawHrefHandlerGuards(rule, source) {
+    const kind = source.path.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.JSX;
+    const file = ts.createSourceFile(source.path, source.source, ts.ScriptTarget.Latest, true, kind);
+    const sanitizers = collectSanitizerNames(file);
+    const safeValues = collectSanitizedValues(file, sanitizers);
+    const handlers = collectHandlers(file);
+    const detections = [];
+    function visit(node) {
+        if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+            if (node.tagName.getText(file) !== "a") {
+                ts.forEachChild(node, visit);
+                return;
+            }
+            const href = jsxAttribute(node, "href");
+            const onClick = jsxAttribute(node, "onClick");
+            const hrefExpression = jsxExpression(href);
+            const handlerExpression = jsxExpression(onClick);
+            if (!hrefExpression || !handlerExpression || isStaticString(hrefExpression) || isSanitizedExpression(hrefExpression, sanitizers, safeValues, file)) {
+                ts.forEachChild(node, visit);
+                return;
+            }
+            const handler = resolveHandler(handlerExpression, handlers);
+            if (handler && handlerGuardsExpression(handler, hrefExpression, sanitizers, file)) {
+                const start = hrefExpression.getStart(file);
+                detections.push({
+                    rule,
+                    file: source.path,
+                    ...locateFromIndex(source.source, start),
+                    label: `href uses raw ${hrefExpression.getText(file)} while onClick performs URL validation`,
+                    data: { href: hrefExpression.getText(file), handler: handlerExpression.getText(file) },
+                });
+            }
+        }
+        ts.forEachChild(node, visit);
+    }
+    visit(file);
+    return detections;
+}
+function collectSanitizerNames(file) {
+    const names = new Set();
+    function visit(node) {
+        if (ts.isImportSpecifier(node)) {
+            const imported = node.propertyName?.text ?? node.name.text;
+            if (looksLikeUrlGuard(imported))
+                names.add(node.name.text);
+        }
+        if (ts.isFunctionDeclaration(node) && node.name && looksLikeUrlGuard(node.name.text))
+            names.add(node.name.text);
+        if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && looksLikeUrlGuard(node.name.text) && node.initializer &&
+            (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer)))
+            names.add(node.name.text);
+        ts.forEachChild(node, visit);
+    }
+    visit(file);
+    return names;
+}
+function looksLikeUrlGuard(name) {
+    return /(?:saniti[sz]e|neutralize|safe|validate|allow)(?:d|r)?(?:.*url)|(?:url).*(?:safe|valid|allow)/i.test(name);
+}
+function collectSanitizedValues(file, sanitizers) {
+    const safe = new Set();
+    function visit(node) {
+        if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && isGuardCall(node.initializer, sanitizers))
+            safe.add(node.name.text);
+        ts.forEachChild(node, visit);
+    }
+    visit(file);
+    return safe;
+}
+function collectHandlers(file) {
+    const handlers = new Map();
+    function visit(node) {
+        if (ts.isFunctionDeclaration(node) && node.name)
+            handlers.set(node.name.text, node);
+        if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer &&
+            (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer)))
+            handlers.set(node.name.text, node.initializer);
+        ts.forEachChild(node, visit);
+    }
+    visit(file);
+    return handlers;
+}
+function jsxAttribute(node, name) {
+    return node.attributes.properties.find((attribute) => ts.isJsxAttribute(attribute) && attribute.name.getText() === name);
+}
+function jsxExpression(attribute) {
+    return attribute?.initializer && ts.isJsxExpression(attribute.initializer) ? attribute.initializer.expression : undefined;
+}
+function isStaticString(expression) {
+    return ts.isStringLiteralLike(expression) || (ts.isTemplateExpression(expression) && expression.templateSpans.length === 0);
+}
+function isSanitizedExpression(expression, sanitizers, safeValues, file) {
+    return isStaticString(expression) || isGuardCall(expression, sanitizers) || (ts.isIdentifier(expression) && safeValues.has(expression.text)) ||
+        (ts.isConditionalExpression(expression) &&
+            isSanitizedExpression(expression.whenTrue, sanitizers, safeValues, file) &&
+            isSanitizedExpression(expression.whenFalse, sanitizers, safeValues, file));
+}
+function resolveHandler(expression, handlers) {
+    if (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression))
+        return expression;
+    return ts.isIdentifier(expression) ? handlers.get(expression.text) : undefined;
+}
+function handlerGuardsExpression(handler, href, sanitizers, file) {
+    const target = compactExpression(href.getText(file));
+    let guarded = false;
+    function visit(node) {
+        if (guarded || (node !== handler && ts.isFunctionLike(node)))
+            return;
+        if (ts.isCallExpression(node) && isGuardCall(node, sanitizers) && node.arguments.some((argument) => compactExpression(argument.getText(file)) === target))
+            guarded = true;
+        ts.forEachChild(node, visit);
+    }
+    visit(handler);
+    return guarded;
+}
+function isGuardCall(expression, sanitizers) {
+    if (!ts.isCallExpression(expression))
+        return false;
+    if (ts.isIdentifier(expression.expression))
+        return sanitizers.has(expression.expression.text) || looksLikeUrlGuard(expression.expression.text);
+    return ts.isPropertyAccessExpression(expression.expression) && looksLikeUrlGuard(expression.expression.name.text);
+}
+function compactExpression(value) {
+    return value.replace(/\s+/g, "");
+}
 function test(source, expression) {
     return new RegExp(expression.pattern, expression.flags).test(source);
 }
@@ -63,6 +191,10 @@ function locate(source, expression) {
     if (match?.index === undefined)
         return undefined;
     const line = source.slice(0, match.index).split(/\r?\n/).length;
+    return { line, snippet: source.split(/\r?\n/)[line - 1]?.trim().slice(0, 240) ?? "" };
+}
+function locateFromIndex(source, index) {
+    const line = source.slice(0, index).split(/\r?\n/).length;
     return { line, snippet: source.split(/\r?\n/)[line - 1]?.trim().slice(0, 240) ?? "" };
 }
 async function walk(root) {

@@ -4,10 +4,11 @@ export interface MatchExpression { pattern: string; flags: string }
 interface ContentMatch { kind: "content"; files: string[]; pattern: MatchExpression; requires: MatchExpression[] }
 interface MissingContentMatch { kind: "missing-content"; files: string[]; trigger: MatchExpression; required: MatchExpression }
 interface MissingFileMatch { kind: "missing-file"; triggerFiles: string[]; requiredFiles: string[] }
+interface RawHrefHandlerGuardMatch { kind: "raw-href-handler-guard"; files: string[] }
 export interface RuleSpec {
   id: string; title: string; summary: string; category: string; severity: Severity; confidence: Confidence;
   whyItMatters: string; impact: string; recommendation: string; complexity: "trivial" | "small" | "medium" | "large"; tags: string[];
-  match: ContentMatch | MissingContentMatch | MissingFileMatch;
+  match: ContentMatch | MissingContentMatch | MissingFileMatch | RawHrefHandlerGuardMatch;
 }
 export interface AdversarySpec { id: string; displayName: string; description: string; files: string[]; rules: RuleSpec[] }
 
@@ -84,6 +85,23 @@ export const spec = {
           "flags": "i"
         },
         "requires": []
+      }
+    },
+    {
+      "id": "react.raw-href-handler-guard",
+      "title": "Link URL is guarded only in its click handler",
+      "summary": "Link URL is guarded only in its click handler",
+      "category": "security",
+      "severity": "high",
+      "confidence": "high",
+      "whyItMatters": "An anchor href is an active browser sink that native navigation paths can use independently of the click handler's intended validation flow.",
+      "impact": "A dangerous URL can remain available to middle-click, keyboard activation, context-menu navigation, or link copying.",
+      "recommendation": "Neutralize dangerous values in the rendered href itself; preserve safe URL bytes when no rewrite is needed.",
+      "complexity": "small",
+      "tags": ["security", "href", "defense-in-depth"],
+      "match": {
+        "kind": "raw-href-handler-guard",
+        "files": [...JSX_FILES]
       }
     },
     {
