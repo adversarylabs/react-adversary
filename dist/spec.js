@@ -73,6 +73,23 @@ export const spec = {
             }
         },
         {
+            "id": "react.raw-href-handler-guard",
+            "title": "Link URL is guarded only in its click handler",
+            "summary": "Link URL is guarded only in its click handler",
+            "category": "security",
+            "severity": "high",
+            "confidence": "high",
+            "whyItMatters": "An anchor href is an active browser sink that native navigation paths can use independently of the click handler's intended validation flow.",
+            "impact": "A dangerous URL can remain available to middle-click, keyboard activation, context-menu navigation, or link copying.",
+            "recommendation": "Neutralize dangerous values in the rendered href itself; preserve safe URL bytes when no rewrite is needed.",
+            "complexity": "small",
+            "tags": ["security", "href", "defense-in-depth"],
+            "match": {
+                "kind": "raw-href-handler-guard",
+                "files": [...JSX_FILES]
+            }
+        },
+        {
             "id": "react.href-user-input",
             "title": "User-influenced value used in navigation attribute",
             "summary": "User-influenced value used in navigation attribute",

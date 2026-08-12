@@ -7,6 +7,7 @@ Reviews React source for raw HTML injection, opener attacks, and dynamic code ex
 - **React renders raw HTML:** Render text normally or sanitize with a maintained allowlist sanitizer.
 - **Blank-target link lacks opener isolation:** Add rel="noopener noreferrer".
 - **React client executes dynamic JavaScript:** Replace dynamic evaluation with explicit parsing.
+- **Link validation exists only in onClick:** Neutralize dangerous values in the rendered href itself.
 
 ## Development
 

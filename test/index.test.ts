@@ -9,6 +9,7 @@ const ruleCases = [
   { key: "unsafe-html", id: "react.unsafe-html" },
   { key: "dynamic-eval", id: "react.dynamic-eval" },
   { key: "client-env-secret", id: "react.client-env-secret" },
+  { key: "raw-href-handler-guard", id: "react.raw-href-handler-guard" },
   { key: "href-user-input", id: "react.href-user-input" },
   { key: "token-in-localstorage", id: "react.token-in-localstorage" },
   { key: "reverse-tabnabbing", id: "react.reverse-tabnabbing" },
@@ -22,6 +23,13 @@ test("every initial rule has focused vulnerable and clean coverage", async () =>
     const clean = await review(`rules/${rule.key}/clean`);
     assert.equal(clean.findings.some((finding) => finding.ruleId === rule.id), false, `${rule.id} flagged its clean fixture`);
   }
+});
+
+test("raw href findings resolve inline and named URL guards", async () => {
+  const output = await review("rules/raw-href-handler-guard/vulnerable", true);
+  const observations = output.rawObservations?.filter((item) => item.ruleId === "react.raw-href-handler-guard") ?? [];
+  assert.deepEqual(observations.map((item) => item.evidence?.href), ["url", "button.url"]);
+  assert.deepEqual(observations.map((item) => item.location?.snippet), ["href={url}", "return <a href={button.url} onClick={openButton}>Open button</a>;"]);
 });
 
 test("accepts a repository without applicable configuration", async () => {

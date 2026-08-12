@@ -14,6 +14,17 @@ Public grounding: React docs on `dangerouslySetInnerHTML`, DOMPurify, React 16.9
 
 ## High
 
+### `react.raw-href-handler-guard`
+
+| | |
+| --- | --- |
+| **What** | A dynamic anchor href remains raw while its click handler treats URL validation as the security boundary |
+| **Why** | Native navigation paths can use `href` independently of the handler's intended flow, including middle-click, keyboard activation, context-menu navigation, and copied links |
+| **Looks for** | A React anchor whose `onClick` sanitizes or validates the same dynamic expression rendered raw in `href` |
+| **Stays quiet when** | The href is sanitized/neutralized at render; it is literal; the handler is analytics or unrelated behavior; or a button owns navigation without an anchor sink |
+| **Public examples** | [Merged Cognigy fix and maintainer review](https://github.com/Cognigy/chat-components/pull/258), which confirmed render-time neutralization as the load-bearing defense while preserving safe URL bytes |
+| **Remediation** | Rewrite dangerous values at the rendered href sink; keep already-safe URLs unchanged when normalization would be a compatibility break |
+
 ### `react.unsafe-html`
 
 | | |

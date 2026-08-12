@@ -20,6 +20,10 @@ interface MissingFileMatch {
     triggerFiles: string[];
     requiredFiles: string[];
 }
+interface RawHrefHandlerGuardMatch {
+    kind: "raw-href-handler-guard";
+    files: string[];
+}
 export interface RuleSpec {
     id: string;
     title: string;
@@ -32,7 +36,7 @@ export interface RuleSpec {
     recommendation: string;
     complexity: "trivial" | "small" | "medium" | "large";
     tags: string[];
-    match: ContentMatch | MissingContentMatch | MissingFileMatch;
+    match: ContentMatch | MissingContentMatch | MissingFileMatch | RawHrefHandlerGuardMatch;
 }
 export interface AdversarySpec {
     id: string;
@@ -108,6 +112,22 @@ export declare const spec: {
                 readonly flags: "i";
             };
             readonly requires: [];
+        };
+    }, {
+        readonly id: "react.raw-href-handler-guard";
+        readonly title: "Link URL is guarded only in its click handler";
+        readonly summary: "Link URL is guarded only in its click handler";
+        readonly category: "security";
+        readonly severity: "high";
+        readonly confidence: "high";
+        readonly whyItMatters: "An anchor href is an active browser sink that native navigation paths can use independently of the click handler's intended validation flow.";
+        readonly impact: "A dangerous URL can remain available to middle-click, keyboard activation, context-menu navigation, or link copying.";
+        readonly recommendation: "Neutralize dangerous values in the rendered href itself; preserve safe URL bytes when no rewrite is needed.";
+        readonly complexity: "small";
+        readonly tags: ["security", "href", "defense-in-depth"];
+        readonly match: {
+            readonly kind: "raw-href-handler-guard";
+            readonly files: ["**/*.jsx", "**/*.tsx"];
         };
     }, {
         readonly id: "react.href-user-input";
