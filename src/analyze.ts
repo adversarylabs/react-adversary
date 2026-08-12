@@ -1,5 +1,7 @@
-import { readFile, readdir } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { readdir } from "node:fs/promises";
 import { join, sep } from "node:path";
+import { promisify } from "node:util";
 import { type RuleContext } from "@adversarylabs/sdk";
 import ts from "typescript";
 import { observationFor } from "./rules.js";
@@ -7,8 +9,14 @@ import { spec, type MatchExpression, type RuleSpec } from "./spec.js";
 
 const SKIPPED = new Set([".adversary", ".git", ".hg", ".next", ".svn", "coverage", "dist", "node_modules", "target", "vendor"]);
 const MAX_FILES = 5000;
+const execute = promisify(execFile);
 
-interface SourceFile { path: string; source: string }
+interface SourceFile {
+  path: string;
+  source: string;
+  status: "added" | "modified" | "repository";
+  changedLines: Set<number>;
+}
 interface Detection { rule: RuleSpec; file: string; line: number; snippet: string; label: string; data: Record<string, unknown> }
 
 export async function analyzeRepository(ctx: RuleContext): Promise<void> {
@@ -20,7 +28,27 @@ export async function analyzeRepository(ctx: RuleContext): Promise<void> {
       spec.files.some((glob) => matchesGlob(path, glob)),
     limit: MAX_FILES,
   });
-  const sources: SourceFile[] = scoped.map((file) => ({ path: file.path, source: file.content }));
+  const sources: SourceFile[] = [];
+  const wholeTarget = ctx.change === null || ctx.change.scanMode === "all";
+  for (const file of scoped) {
+    if (wholeTarget || file.status === "repository") {
+      sources.push({
+        path: file.path,
+        source: file.content,
+        status: "repository",
+        changedLines: new Set<number>(),
+      });
+      continue;
+    }
+
+    const change = await changedSource(ctx, file.path);
+    sources.push({
+      path: file.path,
+      source: file.content,
+      status: change.status,
+      changedLines: change.changedLines,
+    });
+  }
   ctx.summary.files_scanned = sources.length;
 
   const detections = spec.rules.flatMap((rule) => evaluate(rule, sources, allPaths));
@@ -51,7 +79,7 @@ function evaluate(rule: RuleSpec, sources: SourceFile[], allPaths: string[]): De
   if (match.kind === "missing-content") {
     return matchingSources.flatMap((file) => {
       if (!test(file.source, match.trigger) || test(file.source, match.required)) return [];
-      const location = locate(file.source, match.trigger);
+      const location = locateEligible(file, match.trigger);
       if (location === undefined) return [];
       return [{ rule, file: file.path, ...location, label: rule.title, data: { requiredPattern: match.required.pattern } }];
     });
@@ -59,7 +87,7 @@ function evaluate(rule: RuleSpec, sources: SourceFile[], allPaths: string[]): De
 
   return matchingSources.flatMap((file) => {
     if (!match.requires.every((pattern) => test(file.source, pattern))) return [];
-    const location = locate(file.source, match.pattern);
+    const location = locateEligible(file, match.pattern);
     if (location === undefined) return [];
     return [{ rule, file: file.path, ...location, label: rule.title, data: { matchedPattern: match.pattern.pattern } }];
   });
@@ -85,12 +113,17 @@ function findRawHrefHandlerGuards(rule: RuleSpec, source: SourceFile): Detection
         return;
       }
       const handler = resolveHandler(handlerExpression, handlers);
-      if (handler && handlerGuardsExpression(handler, hrefExpression, sanitizers, file)) {
-        const start = hrefExpression.getStart(file);
+      const guard = handler && handlerGuardForExpression(handler, hrefExpression, sanitizers, file);
+      if (handler && guard) {
+        const anchor = eligibleNodeAnchor(source, file, hrefExpression, guard);
+        if (anchor === undefined) {
+          ts.forEachChild(node, visit);
+          return;
+        }
         detections.push({
           rule,
           file: source.path,
-          ...locateFromIndex(source.source, start),
+          ...locationAtLine(source.source, anchor),
           label: `href uses raw ${hrefExpression.getText(file)} while onClick performs URL validation`,
           data: { href: hrefExpression.getText(file), handler: handlerExpression.getText(file) },
         });
@@ -168,16 +201,21 @@ function resolveHandler(expression: ts.Expression, handlers: Map<string, ts.Func
   return ts.isIdentifier(expression) ? handlers.get(expression.text) : undefined;
 }
 
-function handlerGuardsExpression(handler: ts.FunctionLikeDeclaration, href: ts.Expression, sanitizers: Set<string>, file: ts.SourceFile): boolean {
+function handlerGuardForExpression(
+  handler: ts.FunctionLikeDeclaration,
+  href: ts.Expression,
+  sanitizers: Set<string>,
+  file: ts.SourceFile,
+): ts.CallExpression | undefined {
   const target = compactExpression(href.getText(file));
-  let guarded = false;
+  let guard: ts.CallExpression | undefined;
   function visit(node: ts.Node): void {
-    if (guarded || (node !== handler && ts.isFunctionLike(node))) return;
-    if (ts.isCallExpression(node) && isGuardCall(node, sanitizers) && node.arguments.some((argument) => compactExpression(argument.getText(file)) === target)) guarded = true;
+    if (guard !== undefined || (node !== handler && ts.isFunctionLike(node))) return;
+    if (ts.isCallExpression(node) && isGuardCall(node, sanitizers) && node.arguments.some((argument) => compactExpression(argument.getText(file)) === target)) guard = node;
     ts.forEachChild(node, visit);
   }
   visit(handler);
-  return guarded;
+  return guard;
 }
 
 function isGuardCall(expression: ts.Expression, sanitizers: Set<string>): expression is ts.CallExpression {
@@ -194,16 +232,100 @@ function test(source: string, expression: MatchExpression): boolean {
   return new RegExp(expression.pattern, expression.flags).test(source);
 }
 
-function locate(source: string, expression: MatchExpression): { line: number; snippet: string } | undefined {
-  const match = new RegExp(expression.pattern, expression.flags).exec(source);
-  if (match?.index === undefined) return undefined;
-  const line = source.slice(0, match.index).split(/\r?\n/).length;
+function locateEligible(file: SourceFile, expression: MatchExpression): { line: number; snippet: string } | undefined {
+  const flags = expression.flags.includes("g") ? expression.flags : `${expression.flags}g`;
+  for (const match of file.source.matchAll(new RegExp(expression.pattern, flags))) {
+    if (match.index === undefined) continue;
+    const start = match.index;
+    const end = start + match[0].length;
+    const anchor = eligibleAnchor(
+      file,
+      lineAt(file.source, start),
+      lineAt(file.source, Math.max(start, end - 1)),
+    );
+    if (anchor === undefined) continue;
+    return locationAtLine(file.source, anchor);
+  }
+  return undefined;
+}
+
+function eligibleNodeAnchor(
+  source: SourceFile,
+  file: ts.SourceFile,
+  ...nodes: ts.Node[]
+): number | undefined {
+  if (source.status !== "modified") return lineAt(source.source, nodes[0]?.getStart(file) ?? 0);
+  for (const node of nodes) {
+    const anchor = eligibleAnchor(
+      source,
+      lineAt(source.source, node.getStart(file)),
+      lineAt(source.source, Math.max(node.getStart(file), node.getEnd() - 1)),
+    );
+    if (anchor !== undefined) return anchor;
+  }
+  return undefined;
+}
+
+function eligibleAnchor(file: SourceFile, startLine: number, endLine: number): number | undefined {
+  if (file.status !== "modified") return startLine;
+  for (let line = startLine; line <= endLine; line += 1) {
+    if (file.changedLines.has(line)) return line;
+  }
+  return undefined;
+}
+
+function lineAt(source: string, index: number): number {
+  return source.slice(0, index).split(/\r?\n/).length;
+}
+
+function locationAtLine(source: string, line: number): { line: number; snippet: string } {
   return { line, snippet: source.split(/\r?\n/)[line - 1]?.trim().slice(0, 240) ?? "" };
 }
 
-function locateFromIndex(source: string, index: number): { line: number; snippet: string } {
-  const line = source.slice(0, index).split(/\r?\n/).length;
-  return { line, snippet: source.split(/\r?\n/)[line - 1]?.trim().slice(0, 240) ?? "" };
+async function changedSource(
+  ctx: RuleContext,
+  path: string,
+): Promise<Pick<SourceFile, "changedLines" | "status">> {
+  const base = ctx.change?.baseRef;
+  if (base === undefined || !(await existsAtRevision(ctx.repoPath, base, path))) {
+    return { changedLines: new Set<number>(), status: "added" };
+  }
+
+  const args = ["diff", "--unified=0", base];
+  const head = ctx.change?.headRef;
+  if (head !== undefined && !ctx.change?.worktree) args.push(head);
+  args.push("--", path);
+  const patch = await gitOutput(ctx.repoPath, args);
+  return { changedLines: changedLineNumbers(patch), status: "modified" };
+}
+
+async function existsAtRevision(repoPath: string, revision: string, path: string): Promise<boolean> {
+  try {
+    await execute("git", ["-C", repoPath, "cat-file", "-e", `${revision}:${path}`], {
+      maxBuffer: 1024 * 1024,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function gitOutput(repoPath: string, args: string[]): Promise<string> {
+  const result = await execute("git", ["-C", repoPath, ...args], {
+    encoding: "utf8",
+    maxBuffer: 8 * 1024 * 1024,
+  });
+  return result.stdout;
+}
+
+function changedLineNumbers(patch: string): Set<number> {
+  const lines = new Set<number>();
+  for (const match of patch.matchAll(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/gm)) {
+    const start = Number(match[1]);
+    const count = match[2] === undefined ? 1 : Number(match[2]);
+    for (let line = start; line < start + count; line += 1) lines.add(line);
+  }
+  return lines;
 }
 
 async function walk(root: string): Promise<string[]> {
