@@ -19,11 +19,25 @@ test("the published runtime executes without node_modules", async () => {
 
   await mkdir(dirname(entrypoint), { recursive: true });
   await mkdir(join(artifact, "schemas"), { recursive: true });
+  await mkdir(join(artifact, "licenses"), { recursive: true });
   await copyFile(join(projectRoot, "dist", "index.js"), entrypoint);
   await copyFile(
     join(projectRoot, "schemas", "adversary.review.v1.schema.json"),
     join(artifact, "schemas", "adversary.review.v1.schema.json"),
   );
+  for (const name of [
+    "adversarylabs-sdk",
+    "ajv",
+    "fast-deep-equal",
+    "fast-uri",
+    "json-schema-traverse",
+    "typescript",
+    "yaml",
+  ]) {
+    const license = join(projectRoot, "licenses", `${name}.txt`);
+    assert.match(await readFile(license, "utf8"), /copyright|license/i);
+    await copyFile(license, join(artifact, "licenses", `${name}.txt`));
+  }
   await writeFile(join(artifact, "package.json"), '{"type":"module"}\n');
   await writeFile(join(repository, "package.json"), '{"dependencies":{"react":"19.0.0"}}\n');
   await writeFile(input, `${JSON.stringify({ source: { path: repository } })}\n`);
