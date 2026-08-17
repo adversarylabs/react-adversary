@@ -2,22 +2,20 @@
 
 Reviews React source for raw HTML injection, opener attacks, and dynamic code execution.
 
-## Checks
+## Goals
 
-- **React renders raw HTML:** Render text normally or sanitize with a maintained allowlist sanitizer.
-- **Blank-target link lacks opener isolation:** Add rel="noopener noreferrer".
-- **React client executes dynamic JavaScript:** Replace dynamic evaluation with explicit parsing.
-- **Link validation exists only in onClick:** Neutralize dangerous values in the rendered href itself.
+The adversary is designed to produce a small number of high-confidence,
+actionable findings grounded in concrete repository evidence. Its review should
+be deterministic where possible, explicit about impact, and quiet when the
+available evidence does not justify a finding.
 
-## Development
+## Scope
 
-```sh
-npm ci
-npm test
-adversary validate .
-adversary pack --check .
-```
+It evaluates React client source for HTML injection, dynamic execution, unsafe navigation, client-exposed secrets, browser storage, and opener isolation.
 
-## Automatic detection
+The complete detector or review inventory is maintained in
+[CHECKS.md](CHECKS.md).
 
-`adversary auto` selects the react adversary when changes include `**/*.jsx` or `**/*.tsx`, plus the other domain-specific patterns declared in `adversary.yaml`. Unrelated changes do not select it.
+## Boundaries
+
+It owns framework- or language-specific review in this domain. Infrastructure, CI, dependency-manager, and unrelated application concerns remain with specialist adversaries.
