@@ -1,5 +1,5 @@
 name: adversarylabs/web/react
-version: 0.0.13
+version: 0.0.14
 description: Reviews React source for raw HTML injection, opener attacks, and dynamic code execution.
 
 triggers:
