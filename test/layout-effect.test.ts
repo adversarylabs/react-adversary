@@ -41,3 +41,11 @@ test("skips shadowed imported hooks and measurement bindings", () => {
  assert.deepEqual(staleLayoutEffects("Preview.tsx", fixture().replace(" const box", " function useEffect(callback: () => void) {}\n const box")), []);
  assert.deepEqual(staleLayoutEffects("Preview.tsx", fixture().replace("const measure = () =>", "const measure = (box: any) =>")), []);
 });
+
+test("ignores unused measurement helpers but follows direct helper calls", () => {
+ const unused = fixture().replace("measure(); window.addEventListener('resize', measure);", "");
+ assert.deepEqual(staleLayoutEffects("Preview.tsx", unused), []);
+ assert.equal(staleLayoutEffects("Preview.tsx", fixture()).length, 1);
+ const recursive = fixture().replace("measure(); window", "const run = () => { measure(); run(); }; run(); window");
+ assert.equal(staleLayoutEffects("Preview.tsx", recursive).length, 1);
+});

@@ -114,12 +114,30 @@ function measuredRef(node: ts.Node): string | undefined {
 }
 function measurementRefs(callback: ts.Node, setters: Map<string, string>, rendered: Set<string>): Set<string> {
   const result = new Set<string>();
-  walk(callback, node => {
-    if (!ts.isCallExpression(node) || !ts.isIdentifier(node.expression)) return;
-    const state = setters.get(node.expression.text);
-    if (!state || !rendered.has(state)) return;
-    walk(node, read => { const ref = measuredRef(read); if (ref) result.add(ref); });
-  });
+  const helpers = new Map<string, ts.Node>();
+  // Only follow directly invoked helpers declared in this effect's scope.
+  if (ts.isBlock(callback)) for (const statement of callback.statements) {
+    if (ts.isFunctionDeclaration(statement) && statement.name && statement.body) helpers.set(statement.name.text, statement.body);
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      const init = declaration.initializer;
+      if (ts.isIdentifier(declaration.name) && init && (ts.isArrowFunction(init) || ts.isFunctionExpression(init))) helpers.set(declaration.name.text, init.body);
+    }
+  }
+  const visited = new Set<ts.Node>();
+  function scan(body: ts.Node): void {
+    if (visited.has(body)) return;
+    visited.add(body);
+    walkRender(body, node => {
+      if (!ts.isCallExpression(node) || !ts.isIdentifier(node.expression)) return;
+      const helper = helpers.get(node.expression.text);
+      if (helper) scan(helper);
+      const state = setters.get(node.expression.text);
+      if (!state || !rendered.has(state)) return;
+      walkRender(node, read => { const ref = measuredRef(read); if (ref) result.add(ref); });
+    });
+  }
+  scan(callback);
   return result;
 }
 function mountCallback(call: ts.CallExpression): ts.ConciseBody | undefined {
