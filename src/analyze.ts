@@ -4,6 +4,7 @@ import { join, sep } from "node:path";
 import { promisify } from "node:util";
 import { type RuleContext } from "@adversarylabs/sdk";
 import ts from "typescript";
+import { staleLayoutEffects } from "./layout-effect.js";
 import { observationFor } from "./rules.js";
 import { spec, type MatchExpression, type RuleSpec } from "./spec.js";
 
@@ -74,6 +75,9 @@ function evaluate(rule: RuleSpec, sources: SourceFile[], allPaths: string[]): De
   }
 
   const matchingSources = sources.filter((file) => match.files.some((glob) => matchesGlob(file.path, glob)));
+  if (match.kind === "stale-layout") return matchingSources.flatMap(file => staleLayoutEffects(file.path, file.source)
+    .filter(hit => file.status === "repository" || file.status === "added" || [...file.changedLines].some(line => line >= hit.line && line <= hit.endLine))
+    .map(hit => ({ rule, file: file.path, line: hit.line, snippet: file.source.split("\n")[hit.line - 1] ?? "", label: rule.title, data: { effect: hit.content } })));
   if (match.kind === "raw-href-handler-guard") return matchingSources.flatMap((file) => findRawHrefHandlerGuards(rule, file));
 
   if (match.kind === "missing-content") {

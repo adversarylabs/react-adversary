@@ -9,3 +9,7 @@
 | `react.reverse-tabnabbing` | Low | `target="_blank"` links without `rel="noopener noreferrer"` |
 | `react.token-in-localstorage` | Medium | Auth tokens/session credentials stored in `localStorage`/`sessionStorage` |
 | `react.unsafe-html` | High | HTML injected into the DOM from non-literal input |
+
+## Reactive layout measurements
+
+Report a component-local mount-only effect that sets state from a ref measurement while the same element renders prop-derived HTML. Require imported React hooks and matching ref/state ownership. Skip observed/timer-driven layouts and keyed elements; do not demand dependencies on arbitrary effects.

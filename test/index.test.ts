@@ -6,6 +6,7 @@ import { createApp } from "../src/index.ts";
 const fixture = (name: string) => new URL(`../fixtures/${name}`, import.meta.url).pathname;
 const review = (name: string, raw = false) => createApp().run({ input: { source: { path: fixture(name) } }, includeRawObservations: raw });
 const ruleCases = [
+  { key: "stale-layout-measurement", id: "react.stale-layout-measurement" },
   { key: "unsafe-html", id: "react.unsafe-html" },
   { key: "dynamic-eval", id: "react.dynamic-eval" },
   { key: "client-env-secret", id: "react.client-env-secret" },
