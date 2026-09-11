@@ -187,3 +187,19 @@ export function Link({ url }: { url: string }) {
 }
 `;
 }
+
+test("a JSX-only edit surfaces stale layout at the changed element", async () => {
+  const before = `import { useEffect, useRef, useState } from "react";
+export function Panel({html}: {html: string}) {
+ const box = useRef(null);
+ const [clipped, setClipped] = useState(false);
+ useEffect(() => { if (box.current) setClipped(box.current.scrollHeight > box.current.clientHeight); }, []);
+ return <section><div ref={box} dangerouslySetInnerHTML={{__html: 'static'}} />{clipped && <button>Expand</button>}</section>;
+}`;
+  const repo = await committedRepository({"src/Panel.tsx": before});
+  await writeFile(join(repo, "src/Panel.tsx"), before.replace("__html: 'static'", "__html: html"));
+  const output = await changedReview(repo, ["src/Panel.tsx"]);
+  const finding = output.findings.find(item => item.ruleId === "react.stale-layout-measurement");
+  assert.ok(finding);
+  assert.equal(finding.evidence[0]?.location?.line, 6);
+});

@@ -2,6 +2,7 @@
 
 | Rule | Severity | Scans for |
 | --- | --- | --- |
+| `react.stale-layout-measurement` | Medium | Mount-only layout state for prop-derived HTML; changes to either the effect or measured JSX qualify |
 | `react.client-env-secret` | High | Secret-shaped values referenced through client-exposed env vars |
 | `react.dynamic-eval` | High | Dynamic code evaluation from non-literal input in client code |
 | `react.href-user-input` | Medium | User-influenced values in `href` / `src` navigation attributes without protocol validation |

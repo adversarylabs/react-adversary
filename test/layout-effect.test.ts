@@ -22,3 +22,10 @@ test("accepts reactive, observed, static and unrelated-ref layouts", () => {
  for (const text of [fixture("[markup]"), fixture("[]", "new MutationObserver(update).observe(box.current, {childList:true});"), fixture("[]", "", "'static'"), fixture("[]", "", "markup", "other"), fixture().replace('from "react"', 'from "custom-hooks"'), fixture().replace('{clipped && <button>Expand</button>}', '')])
    assert.deepEqual(staleLayoutEffects("Preview.tsx", text), []);
 });
+
+test("returns both changed effect and measured JSX evidence ranges", () => {
+ const text = fixture(); const hit = staleLayoutEffects("Preview.tsx", text)[0]!;
+ const jsxLine = text.split("\n").findIndex(line => line.includes("dangerouslySetInnerHTML")) + 1;
+ assert.ok(hit.ranges.some(range => jsxLine >= range.line && jsxLine <= range.endLine));
+ assert.ok(hit.ranges.some(range => hit.line >= range.line && hit.line <= range.endLine));
+});
