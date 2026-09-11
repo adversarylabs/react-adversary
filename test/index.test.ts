@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 import { createAdversaryRunEnvelope } from "@adversarylabs/sdk";
 import { createApp } from "../src/index.ts";
 
@@ -47,5 +48,5 @@ test("output ordering and protocol envelope are deterministic", async () => {
   const envelope = JSON.parse(JSON.stringify(createAdversaryRunEnvelope(first)));
   assert.equal(envelope.protocolVersion, 1);
   assert.equal(envelope.result.adversary.name, "web/react");
-  assert.equal(envelope.result.adversary.version, "0.0.14");
+  assert.equal(envelope.result.adversary.version, JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")).version);
 });
