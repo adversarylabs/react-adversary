@@ -58,10 +58,9 @@ function propNames(component: Component): Set<string> {
     return p.name.elements.flatMap(e => ts.isIdentifier(e.name) ? [e.name.text] : []);
   }));
 }
-function shadowedProps(component: Component): boolean {
-  const props = propNames(component);
+function shadowedNames(root: ts.Node, props: Set<string>): boolean {
   let shadowed = false;
-  walk(component.body, node => {
+  walk(root, node => {
     if (!(ts.isVariableDeclaration(node) || ts.isParameter(node) || ts.isBindingElement(node) || ts.isFunctionDeclaration(node))) return;
     if (node.name && ts.isIdentifier(node.name) && props.has(node.name.text)) shadowed = true;
   });
@@ -131,7 +130,7 @@ function mountCallback(call: ts.CallExpression): ts.ConciseBody | undefined {
 }
 function componentHits(file: ts.SourceFile, component: Component, hooks: Hooks): LayoutHit[] {
   const body = component.body;
-  if (component.parameters.some(p => hooks.has(p.name.getText(file))) || shadowedProps(component)) return [];
+  if (component.parameters.some(p => hooks.has(p.name.getText(file))) || shadowedNames(body, new Set([...propNames(component), ...hooks.keys()]))) return [];
   if (/\b(?:ResizeObserver|MutationObserver|requestAnimationFrame|setInterval|setTimeout)\b/.test(body.getText(file))) return [];
   const { refs, setters } = componentBindings(body, hooks);
   const elements = reactiveElements(component, refs);
@@ -142,7 +141,7 @@ function componentHits(file: ts.SourceFile, component: Component, hooks: Hooks):
     const call = statement.expression;
     if (!hookCall(call, "useEffect", hooks) && !hookCall(call, "useLayoutEffect", hooks)) continue;
     const callback = mountCallback(call);
-    if (!callback) continue;
+    if (!callback || shadowedNames(callback, new Set([...refs, ...setters.keys()]))) continue;
     const targets = [...measurementRefs(callback, setters, rendered)].flatMap(ref => elements.get(ref) ?? []);
     if (targets.length === 0) continue;
     const effectRange = range(file, call);

@@ -36,3 +36,8 @@ test("skips shadowed props, non-reference property names and timeout lifecycles"
  assert.deepEqual(staleLayoutEffects("Preview.tsx", fixture("[]", "const data = {markup:'fixed'};", "data.markup")), []);
  assert.deepEqual(staleLayoutEffects("Preview.tsx", fixture("[]", "setTimeout(measure, 100);")), []);
 });
+
+test("skips shadowed imported hooks and measurement bindings", () => {
+ assert.deepEqual(staleLayoutEffects("Preview.tsx", fixture().replace(" const box", " function useEffect(callback: () => void) {}\n const box")), []);
+ assert.deepEqual(staleLayoutEffects("Preview.tsx", fixture().replace("const measure = () =>", "const measure = (box: any) =>")), []);
+});
