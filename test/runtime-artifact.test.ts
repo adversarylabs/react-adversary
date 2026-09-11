@@ -59,5 +59,5 @@ test("the published runtime executes without node_modules", async () => {
   const envelope = JSON.parse(await readFile(output, "utf8"));
   assert.equal(envelope.protocolVersion, 1);
   assert.equal(envelope.result.adversary.name, "web/react");
-  assert.equal(envelope.result.adversary.version, "0.0.14");
+  assert.equal(envelope.result.adversary.version, JSON.parse(await readFile(join(projectRoot, "package.json"), "utf8")).version);
 });

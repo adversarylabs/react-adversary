@@ -4,11 +4,12 @@ export interface MatchExpression { pattern: string; flags: string }
 interface ContentMatch { kind: "content"; files: string[]; pattern: MatchExpression; requires: MatchExpression[] }
 interface MissingContentMatch { kind: "missing-content"; files: string[]; trigger: MatchExpression; required: MatchExpression }
 interface MissingFileMatch { kind: "missing-file"; triggerFiles: string[]; requiredFiles: string[] }
+interface StaleLayoutMatch { kind: "stale-layout"; files: string[] }
 interface RawHrefHandlerGuardMatch { kind: "raw-href-handler-guard"; files: string[] }
 export interface RuleSpec {
   id: string; title: string; summary: string; category: string; severity: Severity; confidence: Confidence;
   whyItMatters: string; impact: string; recommendation: string; complexity: "trivial" | "small" | "medium" | "large"; tags: string[];
-  match: ContentMatch | MissingContentMatch | MissingFileMatch | RawHrefHandlerGuardMatch;
+  match: ContentMatch | MissingContentMatch | MissingFileMatch | RawHrefHandlerGuardMatch | StaleLayoutMatch;
 }
 export interface AdversarySpec { id: string; displayName: string; description: string; files: string[]; rules: RuleSpec[] }
 
@@ -21,6 +22,15 @@ export const spec = {
   "description": "Reviews React source for raw HTML injection, opener attacks, and dynamic code execution.",
   "files": [...SOURCE_FILES],
   "rules": [
+    {
+      id: "react.stale-layout-measurement", title: "Layout state is measured only at mount",
+      summary: "A mount-only effect derives layout state from an element whose HTML changes with props.",
+      category: "correctness", severity: "medium", confidence: "high",
+      whyItMatters: "An empty dependency array does not remeasure the DOM when the rendered content changes.",
+      impact: "Overflow-dependent controls can retain stale visibility after an edit or data refresh until an unrelated resize.",
+      recommendation: "Remeasure when the rendered content changes, or observe the relevant DOM changes. Preserve the intended collapsed measurement when expansion itself changes geometry.",
+      complexity: "small", tags: ["react", "effects", "layout"], match: { kind: "stale-layout", files: [...JSX_FILES] },
+    },
     {
       "id": "react.unsafe-html",
       "title": "React renders raw HTML",

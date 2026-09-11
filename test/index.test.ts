@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 import { createAdversaryRunEnvelope } from "@adversarylabs/sdk";
 import { createApp } from "../src/index.ts";
 
 const fixture = (name: string) => new URL(`../fixtures/${name}`, import.meta.url).pathname;
 const review = (name: string, raw = false) => createApp().run({ input: { source: { path: fixture(name) } }, includeRawObservations: raw });
 const ruleCases = [
+  { key: "stale-layout-measurement", id: "react.stale-layout-measurement" },
   { key: "unsafe-html", id: "react.unsafe-html" },
   { key: "dynamic-eval", id: "react.dynamic-eval" },
   { key: "client-env-secret", id: "react.client-env-secret" },
@@ -46,5 +48,5 @@ test("output ordering and protocol envelope are deterministic", async () => {
   const envelope = JSON.parse(JSON.stringify(createAdversaryRunEnvelope(first)));
   assert.equal(envelope.protocolVersion, 1);
   assert.equal(envelope.result.adversary.name, "web/react");
-  assert.equal(envelope.result.adversary.version, "0.0.14");
+  assert.equal(envelope.result.adversary.version, JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")).version);
 });
