@@ -23,14 +23,21 @@ export function staleLayoutEffects(path: string, source: string): { line: number
     // Observer/timer-driven or ref reassignment lifecycles need broader reasoning.
     if (/\b(?:ResizeObserver|MutationObserver|requestAnimationFrame|setInterval)\b/.test(body.getText(file))) return;
     const refs = new Set<string>();
-    const setters = new Set<string>();
+    const setters = new Map<string, string>();
     for (const statement of body.statements) if (ts.isVariableStatement(statement)) for (const d of statement.declarationList.declarations) {
       if (ts.isIdentifier(d.name) && hook(d.initializer, "useRef")) refs.add(d.name.text);
       if (ts.isArrayBindingPattern(d.name) && hook(d.initializer, "useState")) {
         const setter = d.name.elements[1];
-        if (setter && ts.isBindingElement(setter) && ts.isIdentifier(setter.name)) setters.add(setter.name.text);
+        const state = d.name.elements[0];
+        if (setter && ts.isBindingElement(setter) && ts.isIdentifier(setter.name) && state && ts.isBindingElement(state) && ts.isIdentifier(state.name)) setters.set(setter.name.text, state.name.text);
       }
     }
+    // A layout snapshot used only for initial telemetry is not stale UI state.
+    const renderedState = new Set<string>();
+    walkRender(body, node => {
+      if (!ts.isJsxExpression(node) || !node.expression) return;
+      walkRender(node.expression, child => { if (ts.isIdentifier(child)) renderedState.add(child.text); });
+    });
     const dynamicRefs = new Set<string>();
     walkRender(body, node => {
       if (!ts.isJsxOpeningElement(node) && !ts.isJsxSelfClosingElement(node)) return;
@@ -59,7 +66,7 @@ export function staleLayoutEffects(path: string, source: string): { line: number
       if (!callback || !(ts.isArrowFunction(callback) || ts.isFunctionExpression(callback)) || !deps || !ts.isArrayLiteralExpression(deps) || deps.elements.length !== 0) continue;
       let measured = false;
       walk(callback.body, node => {
-        if (!ts.isCallExpression(node) || !ts.isIdentifier(node.expression) || !setters.has(node.expression.text)) return;
+        if (!ts.isCallExpression(node) || !ts.isIdentifier(node.expression) || !setters.has(node.expression.text) || !renderedState.has(setters.get(node.expression.text)!)) return;
         walk(node, read => {
           if (!ts.isPropertyAccessExpression(read) || !["scrollHeight", "clientHeight", "scrollWidth", "clientWidth"].includes(read.name.text)) return;
           const current = read.expression;
