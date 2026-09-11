@@ -29,3 +29,10 @@ test("returns both changed effect and measured JSX evidence ranges", () => {
  assert.ok(hit.ranges.some(range => jsxLine >= range.line && jsxLine <= range.endLine));
  assert.ok(hit.ranges.some(range => hit.line >= range.line && hit.line <= range.endLine));
 });
+
+test("skips shadowed props, non-reference property names and timeout lifecycles", () => {
+ const nested = fixture().replace("return <section>", "{ const markup = 'fixed'; return <section>").replace("</section>;", "</section>; }");
+ assert.deepEqual(staleLayoutEffects("Preview.tsx", nested), []);
+ assert.deepEqual(staleLayoutEffects("Preview.tsx", fixture("[]", "const data = {markup:'fixed'};", "data.markup")), []);
+ assert.deepEqual(staleLayoutEffects("Preview.tsx", fixture("[]", "setTimeout(measure, 100);")), []);
+});

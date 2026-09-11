@@ -58,6 +58,22 @@ function propNames(component: Component): Set<string> {
     return p.name.elements.flatMap(e => ts.isIdentifier(e.name) ? [e.name.text] : []);
   }));
 }
+function shadowedProps(component: Component): boolean {
+  const props = propNames(component);
+  let shadowed = false;
+  walk(component.body, node => {
+    if (!(ts.isVariableDeclaration(node) || ts.isParameter(node) || ts.isBindingElement(node) || ts.isFunctionDeclaration(node))) return;
+    if (node.name && ts.isIdentifier(node.name) && props.has(node.name.text)) shadowed = true;
+  });
+  return shadowed;
+}
+function referencesProp(node: ts.Node, props: Set<string>): boolean {
+  if (!ts.isIdentifier(node) || !props.has(node.text)) return false;
+  const parent = node.parent;
+  if (ts.isPropertyAccessExpression(parent) && parent.name === node) return false;
+  if (ts.isPropertyAssignment(parent) && parent.name === node) return false;
+  return true;
+}
 function renderedIdentifiers(body: ts.Block): Set<string> {
   const names = new Set<string>();
   walkRender(body, node => {
@@ -87,7 +103,7 @@ function reactiveElements(component: Component, refs: Set<string>): Map<string, 
     const value = html.properties.find(p => ts.isPropertyAssignment(p) && p.name.getText() === "__html");
     if (!value || !ts.isPropertyAssignment(value)) return;
     let reactive = false;
-    walk(value.initializer, n => { if (ts.isIdentifier(n) && props.has(n.text)) reactive = true; });
+    walk(value.initializer, n => { if (referencesProp(n, props)) reactive = true; });
     if (reactive) result.set(ref.text, [...(result.get(ref.text) ?? []), node]);
   });
   return result;
@@ -115,8 +131,8 @@ function mountCallback(call: ts.CallExpression): ts.ConciseBody | undefined {
 }
 function componentHits(file: ts.SourceFile, component: Component, hooks: Hooks): LayoutHit[] {
   const body = component.body;
-  if (component.parameters.some(p => hooks.has(p.name.getText(file)))) return [];
-  if (/\b(?:ResizeObserver|MutationObserver|requestAnimationFrame|setInterval)\b/.test(body.getText(file))) return [];
+  if (component.parameters.some(p => hooks.has(p.name.getText(file))) || shadowedProps(component)) return [];
+  if (/\b(?:ResizeObserver|MutationObserver|requestAnimationFrame|setInterval|setTimeout)\b/.test(body.getText(file))) return [];
   const { refs, setters } = componentBindings(body, hooks);
   const elements = reactiveElements(component, refs);
   const rendered = renderedIdentifiers(body);
