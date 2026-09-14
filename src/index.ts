@@ -7,7 +7,7 @@ import { analyzeRepository } from "./analyze.js";
 import { registerRules } from "./rules.js";
 
 export function createApp(): Adversary {
-  const app = new Adversary({ name: "web/react", version: "0.0.15", review: { maximumFindings: 12 } });
+  const app = new Adversary({ name: "web/react", version: "0.0.16", review: { maximumFindings: 12 } });
   registerRules(app);
   app.rule("react.review", async (ctx) => analyzeRepository(ctx));
   return app;
